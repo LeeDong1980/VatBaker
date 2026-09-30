@@ -3,8 +3,8 @@
   "version": "1.0.5",
   "displayName": "Vat Baker",
   "description": "A tool to bake VAT from AnimationClip with sample shaders for Unity",
-  "unity": "2021.3",
-  "documentationUrl": "https://github.com/fuqunaga/VatBaker#readme",
+  "unity": "6000.0",
+  "documentationUrl": "https://github.com/LeeDong1980/VatBaker#readme",
   "license": "MIT",
   "keywords": [
     "unity",
@@ -17,5 +17,8 @@
     "email": "fukhid@gmail.com",
     "url": "https://fuquna.ga"
   },
-  "repository": "github:fuqunaga/VatBaker"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LeeDong1980/VatBaker.git"
+  }
 }
