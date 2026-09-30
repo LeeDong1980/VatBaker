@@ -46,9 +46,9 @@ VatPassVaryings VatShadowPassVertex(VatPassAttributes input)
     UNITY_SETUP_INSTANCE_ID(input);
     UNITY_TRANSFER_INSTANCE_ID(input, output);
 
-    float animationTime = GetVatAnimationTime(_Time.y);
-    float3 positionWS = TransformObjectToWorld(GetVatPosition(input.vertexId, animationTime));
-    float3 normalWS = TransformObjectToWorldNormal(GetVatNormal(input.vertexId, animationTime));
+    float2 vatUV = CalcVatTexCoord(input.vertexId, 0.0);
+    float3 positionWS = TransformObjectToWorld(GetVatPosition(vatUV));
+    float3 normalWS = TransformObjectToWorldNormal(GetVatNormal(vatUV));
 
 #if _CASTING_PUNCTUAL_LIGHT_SHADOW
     float3 lightDirectionWS = normalize(_LightPosition - positionWS);
@@ -80,8 +80,8 @@ VatPassVaryings VatDepthOnlyVertex(VatPassAttributes input)
     UNITY_TRANSFER_INSTANCE_ID(input, output);
     UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
 
-    float animationTime = GetVatAnimationTime(_Time.y);
-    output.positionCS = TransformObjectToHClip(GetVatPosition(input.vertexId, animationTime));
+    float2 vatUV = CalcVatTexCoord(input.vertexId, 0.0);
+    output.positionCS = TransformObjectToHClip(GetVatPosition(vatUV));
     return output;
 }
 
@@ -113,9 +113,9 @@ VatDepthNormalsVaryings VatDepthNormalsVertex(VatPassAttributes input)
     UNITY_TRANSFER_INSTANCE_ID(input, output);
     UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
 
-    float animationTime = GetVatAnimationTime(_Time.y);
-    output.positionCS = TransformObjectToHClip(GetVatPosition(input.vertexId, animationTime));
-    output.normalWS = NormalizeNormalPerVertex(TransformObjectToWorldNormal(GetVatNormal(input.vertexId, animationTime)));
+    float2 vatUV = CalcVatTexCoord(input.vertexId, 0.0);
+    output.positionCS = TransformObjectToHClip(GetVatPosition(vatUV));
+    output.normalWS = NormalizeNormalPerVertex(TransformObjectToWorldNormal(GetVatNormal(vatUV)));
     return output;
 }
 
@@ -170,8 +170,8 @@ VatMotionVectorsVaryings VatMotionVectorsVertex(VatPassAttributes input)
     UNITY_TRANSFER_INSTANCE_ID(input, output);
     UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
 
-    float4 positionOS = float4(GetVatPosition(input.vertexId, GetVatAnimationTime(_Time.y)), 1.0);
-    float4 previousPositionOS = float4(GetVatPosition(input.vertexId, GetVatAnimationTime(_Time.y - unity_DeltaTime.x)), 1.0);
+    float4 positionOS = float4(GetVatPosition(CalcVatTexCoord(input.vertexId, 0.0)), 1.0);
+    float4 previousPositionOS = float4(GetVatPosition(CalcVatTexCoord(input.vertexId, -unity_DeltaTime.x)), 1.0);
 
     output.positionCS = TransformObjectToHClip(positionOS.xyz);
     output.positionCSNoJitter = mul(_NonJitteredViewProjMatrix, mul(UNITY_MATRIX_M, positionOS));

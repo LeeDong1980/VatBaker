@@ -26,50 +26,60 @@ CBUFFER_START(UnityPerMaterial)
     VAT_PER_MATERIAL_PROPERTIES
 CBUFFER_END
 
-// With GPU instancing, _AnimationTimeOffset is read per instance (e.g. from a MaterialPropertyBlock).
+// Per-instance playback, set from a MaterialPropertyBlock (not material properties):
+//   _VatClip = (startRow, frameCount, fps, loop) selects a clip in a multi-clip atlas,
+//   _VatClipTime is the time in seconds into that clip.
+// A zero frameCount means no clip was set, so the material's single clip plays on _Time + _AnimationTimeOffset.
 #if defined(UNITY_INSTANCING_ENABLED)
-UNITY_INSTANCING_BUFFER_START(VatProps)
+UNITY_INSTANCING_BUFFER_START(VatInstance)
+    UNITY_DEFINE_INSTANCED_PROP(float4, _VatClip)
+    UNITY_DEFINE_INSTANCED_PROP(float, _VatClipTime)
     UNITY_DEFINE_INSTANCED_PROP(float, _AnimationTimeOffset)
-UNITY_INSTANCING_BUFFER_END(VatProps)
-#define VAT_ANIMATION_TIME_OFFSET UNITY_ACCESS_INSTANCED_PROP(VatProps, _AnimationTimeOffset)
+UNITY_INSTANCING_BUFFER_END(VatInstance)
+#define VAT_INSTANCE(name) UNITY_ACCESS_INSTANCED_PROP(VatInstance, name)
 #else
-#define VAT_ANIMATION_TIME_OFFSET _AnimationTimeOffset
+float4 _VatClip;
+float _VatClipTime;
+#define VAT_INSTANCE(name) name
 #endif
 
 TEXTURE2D(_VatPositionTex);
-SAMPLER(sampler_VatPositionTex);
-
 TEXTURE2D(_VatNormalTex);
-SAMPLER(sampler_VatNormalTex);
+SAMPLER(vat_linear_clamp_sampler); // Inline sampler: ignores the VAT textures' import wrap/filter settings.
 
 
-float CalcVatAnimationTime(float time)
+// Texture coordinate of vertexId at timeOffset seconds from now (0 for this frame, -unity_DeltaTime.x for the previous one).
+// Call UNITY_SETUP_INSTANCE_ID() first.
+float2 CalcVatTexCoord(uint vertexId, float timeOffset)
 {
-    return (time % _VatAnimLength) * _VatAnimFps;
+    float4 clip = VAT_INSTANCE(_VatClip);
+    float time = VAT_INSTANCE(_VatClipTime);
+    if (clip.y < 1.0)
+    {
+        // The baker writes floor(length * fps) + 1 rows; the last row repeats the first for looping.
+        clip = float4(0.0, floor(_VatAnimLength * _VatAnimFps + 1e-3) + 1.0, _VatAnimFps, 1.0);
+        time = _Time.y + VAT_INSTANCE(_AnimationTimeOffset);
+    }
+    time += timeOffset;
+
+    float clipLength = max((clip.y - 1.0) / max(clip.z, 1e-5), 1e-5);
+    // Positive modulo, so negative offsets still wrap; one-shot clips hold their last frame.
+    time = clip.w > 0.5 ? time - floor(time / clipLength) * clipLength : clamp(time, 0.0, clipLength);
+    float frame = time * clip.z;
+
+    uint width = (uint)_VatPositionTex_TexelSize.z;
+    uint block = vertexId / width; // Non-zero only for legacy multi-block bakes; an atlas is one block wide.
+    return float2(float(vertexId - block * width) + 0.5, block * clip.y + clip.x + frame + 0.5) * _VatPositionTex_TexelSize.xy;
 }
 
-// Animation time of the current instance. Call UNITY_SETUP_INSTANCE_ID() first.
-float GetVatAnimationTime(float time)
+float3 GetVatPosition(float2 vatUV)
 {
-    return CalcVatAnimationTime(time + VAT_ANIMATION_TIME_OFFSET);
+    return SAMPLE_TEXTURE2D_LOD(_VatPositionTex, vat_linear_clamp_sampler, vatUV, 0).xyz;
 }
 
-float2 CalcVatTexCoord(uint vertexId, float animationTime)
+float3 GetVatNormal(float2 vatUV)
 {
-    float x = vertexId + 0.5;
-    float y = animationTime + 0.5;
-
-    return float2(x, y) * _VatPositionTex_TexelSize.xy;
-}
-
-float3 GetVatPosition(uint vertexId, float animationTime)
-{
-    return SAMPLE_TEXTURE2D_LOD(_VatPositionTex, sampler_VatPositionTex, CalcVatTexCoord(vertexId, animationTime), 0).xyz;
-}
-
-float3 GetVatNormal(uint vertexId, float animationTime)
-{
-    return SafeNormalize(SAMPLE_TEXTURE2D_LOD(_VatNormalTex, sampler_VatNormalTex, CalcVatTexCoord(vertexId, animationTime), 0).xyz);
+    return SafeNormalize(SAMPLE_TEXTURE2D_LOD(_VatNormalTex, vat_linear_clamp_sampler, vatUV, 0).xyz);
 }
 
 // VAT has no tangents, so re-orthogonalize the mesh tangent against the animated normal.

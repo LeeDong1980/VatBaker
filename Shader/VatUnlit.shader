@@ -4,8 +4,8 @@ Shader "VatBaker/VatUnlit"
     {
         [MainTexture] _MainTex ("MainTex", 2D) = "white" {}
         _AnimationTimeOffset("AnimationTimeOffset", float) = 0.0
-        _VatPositionTex ("VatPositionTex", 2D) = "white" {}
-        _VatNormalTex ("VatNormalTex", 2D) = "white" {}
+        [NoScaleOffset] _VatPositionTex ("VAT Position", 2D) = "black" {}
+        [NoScaleOffset] _VatNormalTex ("VAT Normal", 2D) = "black" {}
         _VatAnimFps("VatAnimFps", float) = 5.0
         _VatAnimLength("VatAnimLength", float) = 5.0
     }
@@ -77,8 +77,8 @@ Shader "VatBaker/VatUnlit"
                 UNITY_TRANSFER_INSTANCE_ID(input, output);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
 
-                float animationTime = GetVatAnimationTime(_Time.y);
-                VertexPositionInputs vertexInput = GetVertexPositionInputs(GetVatPosition(input.vertexId, animationTime));
+                float2 vatUV = CalcVatTexCoord(input.vertexId, 0.0);
+                VertexPositionInputs vertexInput = GetVertexPositionInputs(GetVatPosition(vatUV));
 
                 output.positionCS = vertexInput.positionCS;
                 output.positionWS = vertexInput.positionWS;

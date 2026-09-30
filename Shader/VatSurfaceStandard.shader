@@ -2,15 +2,19 @@ Shader "VatBaker/VatSurfaceStandard"
 {
     Properties
     {
-        [MainTexture] _MainTex ("MainTex", 2D) = "white" {}
-        [Normal] _NormalTex("NormalTex", 2D) = "bump" {}
-        [Gamma] _Metallic("Metallic", Range(0.0, 1.0)) = 0.0
-        _Smoothness("Smoothness", Range(0.0, 1.0)) = 0.0
-        _AnimationTimeOffset("AnimationTimeOffset", float) = 0.0
-        _VatPositionTex ("VatPositionTex", 2D) = "white" {}
-        _VatNormalTex ("VatNormalTex", 2D) = "white" {}
-        _VatAnimFps("VatAnimFps", float) = 5.0
-        _VatAnimLength("VatAnimLength", float) = 5.0
+        [MainTexture] _MainTex ("Base Map", 2D) = "white" {}
+        [MainColor] _BaseColor ("Base Color", Color) = (1, 1, 1, 1)
+        [NoScaleOffset] _MetallicGlossMap ("Metallic (R) Smoothness (A)", 2D) = "white" {}
+        _Metallic ("Metallic (x R)", Range(0, 1)) = 0
+        _Smoothness ("Smoothness (x A)", Range(0, 1)) = 0.5
+        [NoScaleOffset] _OcclusionMap ("Occlusion (G)", 2D) = "white" {}
+        _OcclusionStrength ("Occlusion Strength", Range(0, 1)) = 1
+        [Normal] _NormalTex ("Normal Map", 2D) = "bump" {}
+        _AnimationTimeOffset ("AnimationTimeOffset", Float) = 0.0
+        [NoScaleOffset] _VatPositionTex ("VAT Position", 2D) = "black" {}
+        [NoScaleOffset] _VatNormalTex ("VAT Normal", 2D) = "black" {}
+        _VatAnimFps ("VAT Anim Fps", Float) = 5.0
+        _VatAnimLength ("VAT Anim Length", Float) = 5.0
     }
 
     // Universal Render Pipeline
@@ -33,8 +37,10 @@ Shader "VatBaker/VatSurfaceStandard"
         #define VAT_PER_MATERIAL_PROPERTIES \
             float4 _MainTex_ST; \
             float4 _NormalTex_ST; \
+            half4 _BaseColor; \
             half _Metallic; \
-            half _Smoothness;
+            half _Smoothness; \
+            half _OcclusionStrength;
         ENDHLSL
 
         Pass
@@ -88,6 +94,8 @@ Shader "VatBaker/VatSurfaceStandard"
             SAMPLER(sampler_MainTex);
             TEXTURE2D(_NormalTex);
             SAMPLER(sampler_NormalTex);
+            TEXTURE2D(_MetallicGlossMap);
+            TEXTURE2D(_OcclusionMap);
 
             struct Attributes
             {
@@ -127,9 +135,9 @@ Shader "VatBaker/VatSurfaceStandard"
                 UNITY_TRANSFER_INSTANCE_ID(input, output);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
 
-                float animationTime = GetVatAnimationTime(_Time.y);
-                float3 positionOS = GetVatPosition(input.vertexId, animationTime);
-                float3 normalOS = GetVatNormal(input.vertexId, animationTime);
+                float2 vatUV = CalcVatTexCoord(input.vertexId, 0.0);
+                float3 positionOS = GetVatPosition(vatUV);
+                float3 normalOS = GetVatNormal(vatUV);
                 float4 tangentOS = GetVatTangent(normalOS, input.tangentOS);
 
                 VertexPositionInputs vertexInput = GetVertexPositionInputs(positionOS);
@@ -177,12 +185,15 @@ Shader "VatBaker/VatSurfaceStandard"
                 LODFadeCrossFade(input.positionCS);
             #endif
 
+                half4 metallicGloss = SAMPLE_TEXTURE2D(_MetallicGlossMap, sampler_MainTex, input.uv.xy);
+                half occlusion = SAMPLE_TEXTURE2D(_OcclusionMap, sampler_MainTex, input.uv.xy).g;
+
                 SurfaceData surfaceData = (SurfaceData)0;
-                surfaceData.albedo = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv.xy).rgb;
-                surfaceData.metallic = _Metallic;
-                surfaceData.smoothness = _Smoothness;
+                surfaceData.albedo = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv.xy).rgb * _BaseColor.rgb;
+                surfaceData.metallic = metallicGloss.r * _Metallic;
+                surfaceData.smoothness = metallicGloss.a * _Smoothness;
                 surfaceData.normalTS = UnpackNormal(SAMPLE_TEXTURE2D(_NormalTex, sampler_NormalTex, input.uv.zw));
-                surfaceData.occlusion = 1.0;
+                surfaceData.occlusion = LerpWhiteTo(occlusion, _OcclusionStrength);
                 surfaceData.alpha = 1.0;
 
                 InputData inputData = (InputData)0;
@@ -352,8 +363,12 @@ Shader "VatBaker/VatSurfaceStandard"
 
         sampler2D _MainTex;
         sampler2D _NormalTex;
+        sampler2D _MetallicGlossMap;
+        sampler2D _OcclusionMap;
+        half4 _BaseColor;
         half _Metallic;
         half _Smoothness;
+        half _OcclusionStrength;
 
         UNITY_INSTANCING_BUFFER_START(Props)
            UNITY_DEFINE_INSTANCED_PROP(float, _AnimationTimeOffset)
@@ -370,10 +385,12 @@ Shader "VatBaker/VatSurfaceStandard"
 
         void surf (Input IN, inout SurfaceOutputStandard o)
         {
-            o.Albedo = tex2D(_MainTex, IN.uv_MainTex);
+            half4 metallicGloss = tex2D(_MetallicGlossMap, IN.uv_MainTex);
+            o.Albedo = tex2D(_MainTex, IN.uv_MainTex).rgb * _BaseColor.rgb;
             o.Normal = UnpackNormal(tex2D(_NormalTex, IN.uv_NormalTex));
-            o.Metallic = _Metallic;
-            o.Smoothness = _Smoothness;
+            o.Metallic = metallicGloss.r * _Metallic;
+            o.Smoothness = metallicGloss.a * _Smoothness;
+            o.Occlusion = lerp(1.0, tex2D(_OcclusionMap, IN.uv_MainTex).g, _OcclusionStrength);
         }
 
         ENDCG
