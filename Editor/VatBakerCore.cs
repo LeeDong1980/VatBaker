@@ -82,13 +82,127 @@ namespace VatBaker.Editor
                 list.Select(v3 => new Color(v3.x, v3.y, v3.z)).ToArray();
         }
         
+        public const int MaxAtlasSize = 4096;
+
+        public static (Texture2D, Texture2D, VatClip[]) BakeAtlas(string name, GameObject gameObject,
+            SkinnedMeshRenderer skin, AnimationClip[] clips, float fps, Space space)
+        {
+            var vertexCount = skin.sharedMesh.vertexCount;
+            if (vertexCount > MaxAtlasSize)
+            {
+                throw new ArgumentException(
+                    $"[{skin.sharedMesh.name}] has {vertexCount} vertices; an atlas row holds at most {MaxAtlasSize}.");
+            }
+
+            var vatClips = new VatClip[clips.Length];
+            var height = 0;
+            for (var i = 0; i < clips.Length; i++)
+            {
+                vatClips[i] = LayoutClip(clips[i], fps, height);
+                height += vatClips[i].frameCount;
+            }
+
+            if (height > MaxAtlasSize)
+            {
+                throw new ArgumentException(
+                    $"{clips.Length} clips need {height} rows at {fps} fps; an atlas holds at most {MaxAtlasSize}.");
+            }
+
+            var posTex = CreateAtlasTexture($"{name}.posTex", vertexCount, height);
+            var normTex = CreateAtlasTexture($"{name}.normTex", vertexCount, height);
+            var positionRow = new Color[vertexCount];
+            var normalRow = new Color[vertexCount];
+            using var poolVertices = ListPool<Vector3>.Get(out var vertices);
+            using var poolNormals = ListPool<Vector3>.Get(out var normals);
+            var mesh = new Mesh();
+            var trans = gameObject.transform;
+
+            // BakeMesh output depends on the skin's transform, so bake with it reset (restored on dispose).
+            // Clips that move the root GameObject itself are unsupported here, as in BakeClip.
+            using (TransformCacheScope.ResetScope(skin.transform))
+            {
+                for (var i = 0; i < clips.Length; i++)
+                {
+                    var vatClip = vatClips[i];
+                    var dt = vatClip.frameCount > 1 ? clips[i].length / (vatClip.frameCount - 1) : 0f;
+                    for (var frame = 0; frame < vatClip.frameCount; frame++)
+                    {
+                        clips[i].SampleAnimation(gameObject, dt * frame);
+                        skin.BakeMesh(mesh);
+                        mesh.GetVertices(vertices);
+                        mesh.GetNormals(normals);
+
+                        for (var v = 0; v < vertexCount; v++)
+                        {
+                            var position = vertices[v];
+                            var normal = normals[v];
+                            if (space == Space.Self)
+                            {
+                                position = trans.InverseTransformPoint(position);
+                                normal = trans.InverseTransformDirection(normal);
+                            }
+
+                            positionRow[v] = new Color(position.x, position.y, position.z);
+                            normalRow[v] = new Color(normal.x, normal.y, normal.z);
+                        }
+
+                        posTex.SetPixels(0, vatClip.startRow + frame, vertexCount, 1, positionRow);
+                        normTex.SetPixels(0, vatClip.startRow + frame, vertexCount, 1, normalRow);
+                    }
+                }
+            }
+
+            UnityEngine.Object.DestroyImmediate(mesh);
+            posTex.Apply();
+            normTex.Apply();
+            return (posTex, normTex, vatClips);
+        }
+
+        // Rounds the frame count and samples the clip's exact end, so a looping clip closes without a seam;
+        // the clip's own fps absorbs the rounding.
+        private static VatClip LayoutClip(AnimationClip clip, float fps, int startRow)
+        {
+            var intervals = clip.length > 0f ? Mathf.Max(1, Mathf.RoundToInt(clip.length * fps)) : 0;
+            return new VatClip
+            {
+                name = clip.name,
+                startRow = startRow,
+                frameCount = intervals + 1,
+                fps = intervals > 0 ? intervals / clip.length : 0f,
+                loop = clip.isLooping,
+            };
+        }
+
+        private static Texture2D CreateAtlasTexture(string name, int width, int height) =>
+            new(width, height, TextureFormat.RGBAHalf, false, true)
+            {
+                name = name,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+
         public static void GenerateAssets(string name, SkinnedMeshRenderer skin, float fps, float animLength, Shader shader, Texture posTex, Texture normTex)
         {
-            const string folderName = "VatBakerOutput";
+            var mat = CreateMaterial(shader, skin, posTex, normTex, fps, animLength);
+            SaveOutput(name, skin, mat, posTex, normTex);
+        }
 
-            var folderPath = CombinePathAndCreateFolderIfNotExist("Assets", folderName, false);
-            var subFolderPath = CombinePathAndCreateFolderIfNotExist(folderPath, name);
+        public static void GenerateAtlasAssets(string name, SkinnedMeshRenderer skin, Shader shader,
+            Texture2D posTex, Texture2D normTex, VatClip[] clips)
+        {
+            // The single-clip material values play clip 0 (it starts at row 0), so the material previews on its own.
+            var mat = CreateMaterial(shader, skin, posTex, normTex, clips[0].fps, clips[0].Length);
 
+            var atlas = ScriptableObject.CreateInstance<VatClipAtlas>();
+            atlas.name = $"{name}.atlas";
+            atlas.Initialize(posTex, normTex, skin.sharedMesh.vertexCount, clips);
+
+            SaveOutput(name, skin, mat, posTex, normTex, atlas);
+        }
+
+        private static Material CreateMaterial(Shader shader, SkinnedMeshRenderer skin, Texture posTex, Texture normTex,
+            float fps, float animLength)
+        {
             var mat = new Material(shader)
             {
                 enableInstancing = true
@@ -104,24 +218,35 @@ namespace VatBaker.Editor
             mat.SetTexture(VatShaderProperty.VatNormalTex, normTex);
             mat.SetFloat(VatShaderProperty.VatAnimFps, fps);
             mat.SetFloat(VatShaderProperty.VatAnimLength, animLength);
+            return mat;
+        }
+
+        private static void SaveOutput(string name, SkinnedMeshRenderer skin, Material mat, params UnityEngine.Object[] assets)
+        {
+            const string folderName = "VatBakerOutput";
+
+            var folderPath = CombinePathAndCreateFolderIfNotExist("Assets", folderName, false);
+            var subFolderPath = CombinePathAndCreateFolderIfNotExist(folderPath, name);
 
             var go = new GameObject(name);
             go.AddComponent<MeshRenderer>().sharedMaterial = mat;
             go.AddComponent<MeshFilter>().sharedMesh = skin.sharedMesh;
 
-            AssetDatabase.CreateAsset(posTex, CreatePath(subFolderPath, posTex.name, "asset"));
-            AssetDatabase.CreateAsset(normTex, CreatePath(subFolderPath, normTex.name, "asset"));
+            foreach (var asset in assets)
+            {
+                AssetDatabase.CreateAsset(asset, CreatePath(subFolderPath, asset.name, "asset"));
+            }
             AssetDatabase.CreateAsset(mat, CreatePath(subFolderPath, name, "mat"));
-            var prefab = PrefabUtility.SaveAsPrefabAssetAndConnect(go, 
+            var prefab = PrefabUtility.SaveAsPrefabAssetAndConnect(go,
                 CreatePath(subFolderPath, go.name, "prefab"),
                 InteractionMode.AutomatedAction);
-            
+
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            
+
             EditorGUIUtility.PingObject(prefab);
 
-            static string CreatePath(string folder, string file, string extension) 
+            static string CreatePath(string folder, string file, string extension)
                 => Path.Combine(folder, $"{ReplaceInvalidPathChar(file)}.{extension}");
         }
 
