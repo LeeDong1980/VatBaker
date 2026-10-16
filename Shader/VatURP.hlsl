@@ -26,20 +26,24 @@ CBUFFER_START(UnityPerMaterial)
     VAT_PER_MATERIAL_PROPERTIES
 CBUFFER_END
 
-// Per-instance playback, set from a MaterialPropertyBlock (not material properties):
-//   _VatClip = (startRow, frameCount, fps, loop) selects a clip in a multi-clip atlas,
-//   _VatClipTime is the time in seconds into that clip.
+// Per-instance playback, set from a MaterialPropertyBlock (not material properties), see VatAnimator:
+//   _VatClip = (startRow, frameCount, fps, loop) selects a clip in a multi-clip atlas (VatClip.ToShaderVector),
+//   _VatClipTime is the time in seconds into that clip,
+//   _VatClipTimeScale advances it on the GPU: clip time = _VatClipTime + _Time.y * _VatClipTimeScale.
+//   Leaving it 0 keeps the clip time fixed, so a script can drive _VatClipTime every frame instead.
 // A zero frameCount means no clip was set, so the material's single clip plays on _Time + _AnimationTimeOffset.
 #if defined(UNITY_INSTANCING_ENABLED)
 UNITY_INSTANCING_BUFFER_START(VatInstance)
     UNITY_DEFINE_INSTANCED_PROP(float4, _VatClip)
     UNITY_DEFINE_INSTANCED_PROP(float, _VatClipTime)
+    UNITY_DEFINE_INSTANCED_PROP(float, _VatClipTimeScale)
     UNITY_DEFINE_INSTANCED_PROP(float, _AnimationTimeOffset)
 UNITY_INSTANCING_BUFFER_END(VatInstance)
 #define VAT_INSTANCE(name) UNITY_ACCESS_INSTANCED_PROP(VatInstance, name)
 #else
 float4 _VatClip;
 float _VatClipTime;
+float _VatClipTimeScale;
 #define VAT_INSTANCE(name) name
 #endif
 
@@ -53,14 +57,17 @@ SAMPLER(vat_linear_clamp_sampler); // Inline sampler: ignores the VAT textures' 
 float2 CalcVatTexCoord(uint vertexId, float timeOffset)
 {
     float4 clip = VAT_INSTANCE(_VatClip);
-    float time = VAT_INSTANCE(_VatClipTime);
+    float timeScale = VAT_INSTANCE(_VatClipTimeScale);
+    float time = VAT_INSTANCE(_VatClipTime) + _Time.y * timeScale;
     if (clip.y < 1.0)
     {
         // The baker writes floor(length * fps) + 1 rows; the last row repeats the first for looping.
         clip = float4(0.0, floor(_VatAnimLength * _VatAnimFps + 1e-3) + 1.0, _VatAnimFps, 1.0);
         time = _Time.y + VAT_INSTANCE(_AnimationTimeOffset);
+        timeScale = 1.0;
     }
-    time += timeOffset;
+    // timeOffset is in seconds of _Time; a script driven clip (timeScale 0) is assumed to play at speed 1.
+    time += timeOffset * (timeScale != 0.0 ? timeScale : 1.0);
 
     float clipLength = max((clip.y - 1.0) / max(clip.z, 1e-5), 1e-5);
     // Positive modulo, so negative offsets still wrap; one-shot clips hold their last frame.

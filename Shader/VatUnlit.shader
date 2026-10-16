@@ -190,6 +190,9 @@ Shader "VatBaker/VatUnlit"
 
             UNITY_INSTANCING_BUFFER_START(Props)
                 UNITY_DEFINE_INSTANCED_PROP(float, _AnimationTimeOffset)
+                UNITY_DEFINE_INSTANCED_PROP(float4, _VatClip)
+                UNITY_DEFINE_INSTANCED_PROP(float, _VatClipTime)
+                UNITY_DEFINE_INSTANCED_PROP(float, _VatClipTimeScale)
             UNITY_INSTANCING_BUFFER_END(Props)
 
 
@@ -197,7 +200,11 @@ Shader "VatBaker/VatUnlit"
             {
                 UNITY_SETUP_INSTANCE_ID(v);
 
-                float animTime = CalcVatAnimationTime(_Time.y + UNITY_ACCESS_INSTANCED_PROP(Props, _AnimationTimeOffset));
+                float animTime = CalcVatClipAnimationTime(
+                UNITY_ACCESS_INSTANCED_PROP(Props, _VatClip),
+                UNITY_ACCESS_INSTANCED_PROP(Props, _VatClipTime),
+                UNITY_ACCESS_INSTANCED_PROP(Props, _VatClipTimeScale),
+                _Time.y + UNITY_ACCESS_INSTANCED_PROP(Props, _AnimationTimeOffset));
                 float3 pos = GetVatPosition(vId, animTime);
 
                 v2f_img o;

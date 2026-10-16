@@ -372,13 +372,20 @@ Shader "VatBaker/VatSurfaceStandard"
 
         UNITY_INSTANCING_BUFFER_START(Props)
            UNITY_DEFINE_INSTANCED_PROP(float, _AnimationTimeOffset)
+           UNITY_DEFINE_INSTANCED_PROP(float4, _VatClip)
+           UNITY_DEFINE_INSTANCED_PROP(float, _VatClipTime)
+           UNITY_DEFINE_INSTANCED_PROP(float, _VatClipTimeScale)
         UNITY_INSTANCING_BUFFER_END(Props)
 
         void vert (inout appdata v)
         {
             UNITY_SETUP_INSTANCE_ID(v);
 
-            float animationTime = CalcVatAnimationTime(_Time.y + UNITY_ACCESS_INSTANCED_PROP(Props, _AnimationTimeOffset));
+            float animationTime = CalcVatClipAnimationTime(
+                UNITY_ACCESS_INSTANCED_PROP(Props, _VatClip),
+                UNITY_ACCESS_INSTANCED_PROP(Props, _VatClipTime),
+                UNITY_ACCESS_INSTANCED_PROP(Props, _VatClipTimeScale),
+                _Time.y + UNITY_ACCESS_INSTANCED_PROP(Props, _AnimationTimeOffset));
             v.vertex.xyz = GetVatPosition(v.vId, animationTime);
             v.normal.xyz = GetVatNormal(v.vId, animationTime);
         }
