@@ -16,6 +16,24 @@ inline float CalcVatAnimationTime(float time)
     return (time  % _VatAnimLength) * _VatAnimFps;
 }
 
+// Per-instance clip playback, mirroring CalcVatTexCoord in VatURP.hlsl (see the comment there):
+// clip = _VatClip (startRow, frameCount, fps, loop), clipTime = _VatClipTime, timeScale = _VatClipTimeScale.
+// legacyTime is the time used when no clip is set (frameCount 0): the material's single clip plays as before.
+// Returns the animation time in rows for CalcVatTexCoord / GetVatPosition / GetVatNormal.
+inline float CalcVatClipAnimationTime(float4 clip, float clipTime, float timeScale, float legacyTime)
+{
+    if (clip.y < 1.0)
+    {
+        return CalcVatAnimationTime(legacyTime);
+    }
+
+    float time = clipTime + _Time.y * timeScale;
+    float clipLength = max((clip.y - 1.0) / max(clip.z, 1e-5), 1e-5);
+    // Positive modulo, so negative offsets still wrap; one-shot clips hold their last frame.
+    time = clip.w > 0.5 ? time - floor(time / clipLength) * clipLength : clamp(time, 0.0, clipLength);
+    return clip.x + time * clip.z;
+}
+
 inline float4 CalcVatTexCoord(uint vertexId, float animationTime)
 {
     float x = vertexId + 0.5;
