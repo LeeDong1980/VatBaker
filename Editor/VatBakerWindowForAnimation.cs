@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
@@ -13,6 +14,8 @@ namespace VatBaker.Editor
 
         public GameObject gameObject;
         public Space space = Space.Self;
+        [Tooltip("Bake every clip into one texture pair plus a VatClipAtlas, so each instance can pick its clip.")]
+        public bool bakeAsAtlas = true;
         public int animationFps = 5;
         public Shader sampleShader;
         
@@ -40,6 +43,7 @@ namespace VatBaker.Editor
             
             root.Add(gameObjectPropertyField);
             root.Add(new PropertyField() {bindingPath = nameof(space)});
+            root.Add(new PropertyField() {bindingPath = nameof(bakeAsAtlas)});
             root.Add(new PropertyField() {bindingPath = nameof(animationFps)});
             root.Add(new PropertyField() {bindingPath = nameof(sampleShader)});
             root.Add(_bakeButton);
@@ -79,6 +83,23 @@ namespace VatBaker.Editor
 
         public void Bake()
         {
+            if (bakeAsAtlas)
+            {
+                var atlasName = $"{gameObject.name}_atlas_{animationFps}";
+                // An Animator can reference the same clip from several states.
+                var clips = _clips.Distinct().ToArray();
+                try
+                {
+                    var (atlasPosTex, atlasNormTex, vatClips) = VatBakerCore.BakeAtlas(atlasName, gameObject, _skin, clips, animationFps, space);
+                    VatBakerCore.GenerateAtlasAssets(atlasName, _skin, sampleShader, atlasPosTex, atlasNormTex, vatClips);
+                }
+                catch (ArgumentException e)
+                {
+                    EditorUtility.DisplayDialog("Atlas bake failed", e.Message, "Close");
+                }
+                return;
+            }
+
             foreach(var clip in _clips)
             {
                 var assetName = $"{gameObject.name}_{clip.name}";
