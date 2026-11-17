@@ -10,8 +10,9 @@ Shader "VatBaker/VatSurfaceStandard"
         [NoScaleOffset] _OcclusionMap ("Occlusion (G)", 2D) = "white" {}
         _OcclusionStrength ("Occlusion Strength", Range(0, 1)) = 1
         [Normal] _NormalTex ("Normal Map", 2D) = "bump" {}
-        // Emission (URP only): same names as URP Lit, so material values and EnableKeyword("_EMISSION") carry over.
-        [Toggle(_EMISSION)] _EmissionEnabled ("Emission", Float) = 0
+        // Emission (URP only): _EmissionMap/_EmissionColor/_EMISSION match URP Lit, so material values and EnableKeyword("_EMISSION") carry over.
+        // The toggle shows the _EMISSION keyword itself (VatKeywordToggleDrawer); _EmissionEnabled only mirrors it.
+        [VatKeywordToggle(_EMISSION)] _EmissionEnabled ("Emission", Float) = 0
         [NoScaleOffset] _EmissionMap ("Emission", 2D) = "white" {}
         [HDR] _EmissionColor ("Emission Color", Color) = (0, 0, 0, 1)
         _AnimationTimeOffset ("AnimationTimeOffset", Float) = 0.0
