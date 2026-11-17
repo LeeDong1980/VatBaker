@@ -1,6 +1,6 @@
 {
   "name": "ga.fuquna.vatbaker",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "displayName": "Vat Baker",
   "description": "A tool to bake VAT from AnimationClip with sample shaders for Unity",
   "unity": "6000.0",
