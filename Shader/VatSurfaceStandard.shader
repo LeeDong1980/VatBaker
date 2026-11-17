@@ -10,6 +10,10 @@ Shader "VatBaker/VatSurfaceStandard"
         [NoScaleOffset] _OcclusionMap ("Occlusion (G)", 2D) = "white" {}
         _OcclusionStrength ("Occlusion Strength", Range(0, 1)) = 1
         [Normal] _NormalTex ("Normal Map", 2D) = "bump" {}
+        // Emission (URP only): same names as URP Lit, so material values and EnableKeyword("_EMISSION") carry over.
+        [Toggle(_EMISSION)] _EmissionEnabled ("Emission", Float) = 0
+        [NoScaleOffset] _EmissionMap ("Emission", 2D) = "white" {}
+        [HDR] _EmissionColor ("Emission Color", Color) = (0, 0, 0, 1)
         _AnimationTimeOffset ("AnimationTimeOffset", Float) = 0.0
         [NoScaleOffset] _VatPositionTex ("VAT Position", 2D) = "black" {}
         [NoScaleOffset] _VatNormalTex ("VAT Normal", 2D) = "black" {}
@@ -40,7 +44,8 @@ Shader "VatBaker/VatSurfaceStandard"
             half4 _BaseColor; \
             half _Metallic; \
             half _Smoothness; \
-            half _OcclusionStrength;
+            half _OcclusionStrength; \
+            half4 _EmissionColor;
         ENDHLSL
 
         Pass
@@ -54,6 +59,9 @@ Shader "VatBaker/VatSurfaceStandard"
 
             #pragma vertex vert
             #pragma fragment frag
+
+            // Material keywords
+            #pragma shader_feature_local_fragment _EMISSION
 
             // Universal Pipeline keywords (same set as URP 17.3 Lit.shader, without lightmaps)
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
@@ -96,6 +104,7 @@ Shader "VatBaker/VatSurfaceStandard"
             SAMPLER(sampler_NormalTex);
             TEXTURE2D(_MetallicGlossMap);
             TEXTURE2D(_OcclusionMap);
+            TEXTURE2D(_EmissionMap);
 
             struct Attributes
             {
@@ -195,6 +204,10 @@ Shader "VatBaker/VatSurfaceStandard"
                 surfaceData.normalTS = UnpackNormal(SAMPLE_TEXTURE2D(_NormalTex, sampler_NormalTex, input.uv.zw));
                 surfaceData.occlusion = LerpWhiteTo(occlusion, _OcclusionStrength);
                 surfaceData.alpha = 1.0;
+            #if defined(_EMISSION)
+                // Same as URP Lit SampleEmission(); UniversalFragmentPBR adds it to the output.
+                surfaceData.emission = SAMPLE_TEXTURE2D(_EmissionMap, sampler_MainTex, input.uv.xy).rgb * _EmissionColor.rgb;
+            #endif
 
                 InputData inputData = (InputData)0;
                 inputData.positionWS = input.positionWS;
