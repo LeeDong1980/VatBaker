@@ -1,3 +1,15 @@
+## [1.1.0](https://github.com/LeeDong1980/VatBaker/compare/a716408...upm) (2026-11-17)
+
+Fork release on the `upm` branch of LeeDong1980/VatBaker (Unity 6 / URP 17.3).
+
+### Features
+
+* URP (Unity 6.3 / URP 17.3) SubShaders for VatUnlit and VatSurfaceStandard; SRP Batcher compatible, GPU instancing, shadow / depth / depth-normals / motion vector passes ([#1](https://github.com/LeeDong1980/VatBaker/pull/1))
+* VatSurfaceStandard: metallic/smoothness, occlusion and normal maps ([#1](https://github.com/LeeDong1980/VatBaker/pull/1))
+* Per-instance clip playback through `_VatClip` / `_VatClipTime` ([#1](https://github.com/LeeDong1980/VatBaker/pull/1))
+* Multi-clip VAT atlas baker: `BakeAtlas`, `VatClip`, `VatClipAtlas`, `VatClipPreview` ([#2](https://github.com/LeeDong1980/VatBaker/pull/2))
+* VatSurfaceStandard: URP Lit style emission (`_EmissionMap`, `_EmissionColor`, `_EMISSION`) and a keyword-backed Inspector toggle ([#4](https://github.com/LeeDong1980/VatBaker/pull/4))
+
 ## [1.0.5](https://github.com/fuqunaga/VatBaker/compare/v1.0.4...v1.0.5) (2025-03-03)
 
 
